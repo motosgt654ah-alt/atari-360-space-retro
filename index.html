@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Atari Retro Neon 360</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            color: #0f0;
+            font-family: monospace;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+        #hud {
+            position: absolute;
+            top: 10px;
+            left: 20px;
+            font-size: 16px;
+            z-index: 10;
+            text-shadow: 0 0 8px #0f0;
+            line-height: 1.4;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            background-color: #020202;
+        }
+        #base-analogico {
+            position: absolute;
+            bottom: 25px;
+            left: 30px;
+            width: 120px;
+            height: 120px;
+            border: 2px solid rgba(0, 255, 65, 0.7);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 255, 65, 0.08);
+            box-shadow: 0 0 12px rgba(0, 255, 65, 0.2);
+            z-index: 20;
+        }
+        #pino-analogico {
+            width: 50px;
+            height: 50px;
+            background-color: rgba(0, 255, 65, 0.4);
+            border: 2px solid rgba(0, 255, 65, 0.9);
+            border-radius: 50%;
+            position: absolute;
+            box-shadow: 0 0 10px rgba(0, 255, 65, 0.6);
+        }
+        .painel-direito {
+            position: absolute;
+            bottom: 25px;
+            right: 30px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            z-index: 20;
+        }
+        .btn-acao {
+            border-radius: 50%;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border: 2px solid rgba(0, 255, 65, 0.7);
+            background-color: rgba(0, 255, 65, 0.1);
+            color: rgba(0, 255, 65, 0.9);
+            box-shadow: 0 0 10px rgba(0, 255, 65, 0.2);
+        }
+        #btnTiro {
+            width: 80px;
+            height: 80px;
+            font-size: 14px;
+        }
+        #btnMissil {
+            width: 70px;
+            height: 70px;
+            font-size: 11px;
+            display: none;
+            border-color: rgba(255, 170, 0, 0.8);
+            background-color: rgba(255, 170, 0, 0.12);
+            color: rgba(255, 180, 0, 0.9);
+            box-shadow: 0 0 10px rgba(255, 170, 0, 0.3);
+        }
+        #btnRajada {
+            width: 70px;
+            height: 70px;
+            font-size: 10px;
+            border-color: rgba(0, 200, 255, 0.8);
+            background-color: rgba(0, 200, 255, 0.12);
+            color: rgba(0, 200, 255, 0.9);
+            box-shadow: 0 0 10px rgba(0, 200, 255, 0.3);
+        }
+        .btn-acao:active {
+            background-color: rgba(0, 255, 65, 0.4);
+            box-shadow: 0 0 15px rgba(0, 255, 65, 0.8);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="hud">
+        PONTOS: <span id="pontos">0</span> | FASE: <span id="fase">1</span><br>
+        MÍSSEIS: <span id="qtdMissil">0</span>/2
+    </div>
+    
+    <canvas id="tela"></canvas>
+
+    <div id="base-analogico">
+        <div id="pino-analogico"></div>
+    </div>
+
+    <div class="painel-direito">
+        <div class="btn-acao" id="btnRajada">MEIA-LUA</div>
+        <div class="btn-acao" id="btnMissil">MÍSSIL</div>
+        <div class="btn-acao" id="btnTiro">TIRO</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('tela');
+        const ctx = canvas.getContext('2d');
+        const pontosEl = document.getElementById('pontos');
+        const faseEl = document.getElementById('fase');
+        const qtdMissilEl = document.getElementById('qtdMissil');
+        const btnMissil = document.getElementById('btnMissil');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let pontos = 0;
+        let fase = 1;
+        let gameOver = false;
+        let mísseisDisponíveis = 0;
+        let estrela = null;
+
+        const nave = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            raio: 13,
+            angulo: 0,
+            vx: 0,
+            vy: 0
+        };
+
+        let tiros = [];
+        let asteroides = [];
+        let particulas = [];
+              const baseAnalogico = document.getElementById('base-analogico');
+        const pinoAnalogico = document.getElementById('pino-analogico');
+        let joystickAtivo = false;
+        let joystickX = 0;
+        let joystickY = 0;
+
+        baseAnalogico.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            joystickAtivo = true;
+            atualizarJoystick(e.touches[0]);
+        });
+
+        window.addEventListener('touchmove', (e) => {
+            if (!joystickAtivo) return;
+            e.preventDefault();
+            for (let i = 0; i < e.touches.length; i++) {
+                let t = e.touches[i];
+                if (t.clientX < canvas.width / 2) atualizarJoystick(t);
+            }
+        });
+
+        window.addEventListener('touchend', (e) => {
+            joystickAtivo = false;
+            joystickX = 0;
+            joystickY = 0;
+            pinoAnalogico.style.transform = `translate(0px, 0px)`;
+        });
+
+        function atualizarJoystick(t) {
+            const rect = baseAnalogico.getBoundingClientRect();
+            const centroX = rect.left + rect.width / 2;
+            const centroY = rect.top + rect.height / 2;
+            let dx = t.clientX - centroX;
+            let dy = t.clientY - centroY;
+            let dist = Math.hypot(dx, dy);
+            let raioMax = 40;
+            if (dist > raioMax) {
+                dx = (dx / dist) * raioMax;
+                dy = (dy / dist) * raioMax;
+            }
+            pinoAnalogico.style.transform = `translate(${dx}px, ${dy}px)`;
+            joystickX = dx / raioMax;
+            joystickY = dy / raioMax;
+        }
+
+        function iniciarFase() {
+            asteroides = [];
+            let qtdMeteoros = 3 + fase * 2;
+            for (let i = 0; i < qtdMeteoros; i++) {
+                criarAsteroide();
+            }
+
+            if (fase >= 2 && !estrela) {
+                estrela = {
+                    x: Math.random() * (canvas.width - 200) + 100,
+                    y: Math.random() * (canvas.height - 200) + 100,
+                    raio: 15
+                };
+            }
+        }
+
+        function criarAsteroide() {
+            let x = Math.random() * canvas.width;
+            let y = Math.random() * canvas.height;
+            if (Math.hypot(x - nave.x, y - nave.y) < 150) x += 120;
+
+            const angulo = Math.random() * Math.PI * 2;
+            const velocidade = (1.0 + (fase * 0.25)) + Math.random() * 1.5;
+            asteroides.push({
+                x: x,
+                y: y,
+                vx: Math.cos(angulo) * velocidade,
+                vy: Math.sin(angulo) * velocidade,
+                raio: 20 + Math.random() * 12
+            });
+        }
+
+        iniciarFase();
+
+        function criarExplosao(x, y, cor) {
+            for (let i = 0; i < 12; i++) {
+                let ang = Math.random() * Math.PI * 2;
+                let vel = 1 + Math.random() * 3;
+                particulas.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(ang) * vel,
+                    vy: Math.sin(ang) * vel,
+                    vida: 30,
+                    cor: cor
+                });
+            }
+        }
+
+        document.getElementById('btnTiro').addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (gameOver) { reiniciarJogo(); return; }
+            atirarLaser();
+        });
+
+        document.getElementById('btnMissil').addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (gameOver || mísseisDisponíveis <= 0) return;
+            atirarMissil();
+        });
+
+        document.getElementById('btnRajada').addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (gameOver) return;
+            atirarRajadaMeiaLua();
+        });
+
+        function atirarLaser() {
+            tiros.push({
+                x: nave.x + Math.cos(nave.angulo) * nave.raio,
+                y: nave.y + Math.sin(nave.angulo) * nave.raio,
+                vx: Math.cos(nave.angulo) * 11,
+                vy: Math.sin(nave.angulo) * 11,
+                vida: 40,
+                tipo: 'laser'
+            });
+        }
+
+        function atirarMissil() {
+            if (mísseisDisponíveis > 0) {
+                mísseisDisponíveis--;
+                qtdMissilEl.innerText = mísseisDisponíveis;
+                if (mísseisDisponíveis <= 0) btnMissil.style.display = 'none';
+
+                tiros.push({
+                    x: nave.x,
+                    y: nave.y,
+                    vx: Math.cos(nave.angulo) * 7,
+                    vy: Math.sin(nave.angulo) * 7,
+                    vida: 70,
+                    tipo: 'missil'
+                });
+            }
+        }
+
+        function atirarRajadaMeiaLua() {
+            let anguloBase = nave.angulo;
+            for (let i = -2; i <= 2; i++) {
+                let anguloSpread = anguloBase + (i * 0.32);
+                tiros.push({
+                    x: nave.x,
+                    y: nave.y,
+                    vx: Math.cos(anguloSpread) * 9,
+                    vy: Math.sin(anguloSpread) * 9,
+                    vida: 35,
+                    tipo: 'laser'
+                });
+            }
+        }
+
+        function reiniciarJogo() {
+            pontos = 0;
+            fase = 1;
+            mísseisDisponíveis = 0;
+            btnMissil.style.display = 'none';
+            pontosEl.innerText = pontos;
+            faseEl.innerText = fase;
+            qtdMissilEl.innerText = mísseisDisponíveis;
+            nave.x = canvas.width / 2;
+            nave.y = canvas.height / 2;
+            nave.vx = 0;
+            nave.vy = 0;
+            estrela = null;
+            particulas = [];
+            gameOver = false;
+            iniciarFase();
+              }
+              function loop() {
+            if (!gameOver) {
+                if (joystickAtivo && (Math.abs(joystickX) > 0.05 || Math.abs(joystickY) > 0.05)) {
+                    nave.angulo = Math.atan2(joystickY, joystickX);
+                    nave.vx += Math.cos(nave.angulo) * 0.22;
+                    nave.vy += Math.sin(nave.angulo) * 0.22;
+                }
+
+                nave.vx *= 0.98;
+                nave.vy *= 0.98;
+                nave.x += nave.vx;
+                nave.y += nave.vy;
+
+                if (nave.x < 0) nave.x = canvas.width;
+                if (nave.x > canvas.width) nave.x = 0;
+                if (nave.y < 0) nave.y = canvas.height;
+                if (nave.y > canvas.height) nave.y = 0;
+
+                if (estrela && Math.hypot(nave.x - estrela.x, nave.y - estrela.y) < nave.raio + estrela.raio) {
+                    mísseisDisponíveis = 2;
+                    qtdMissilEl.innerText = mísseisDisponíveis;
+                    btnMissil.style.display = 'flex';
+                    estrela = null;
+                }
+
+                for (let i = tiros.length - 1; i >= 0; i--) {
+                    let t = tiros[i];
+                    t.x += t.vx;
+                    t.y += t.vy;
+                    t.vida--;
+                    if (t.vida <= 0) tiros.splice(i, 1);
+                }
+
+                for (let i = particulas.length - 1; i >= 0; i--) {
+                    let p = particulas[i];
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vida--;
+                    if (p.vida <= 0) particulas.splice(i, 1);
+                }
+
+                for (let i = asteroides.length - 1; i >= 0; i--) {
+                    let a = asteroides[i];
+                    a.x += a.vx;
+                    a.y += a.vy;
+
+                    if (a.x < -a.raio) a.x = canvas.width + a.raio;
+                    if (a.x > canvas.width + a.raio) a.x = -a.raio;
+                    if (a.y < -a.raio) a.y = canvas.height + a.raio;
+                    if (a.y > canvas.height + a.raio) a.y = -a.raio;
+
+                    if (Math.hypot(nave.x - a.x, nave.y - a.y) < nave.raio + a.raio - 4) {
+                        criarExplosao(nave.x, nave.y, '#ff0055');
+                        gameOver = true;
+                    }
+
+                    for (let j = tiros.length - 1; j >= 0; j--) {
+                        let t = tiros[j];
+                        if (Math.hypot(t.x - a.x, t.y - a.y) < a.raio) {
+                            let coresExplosao = ['#00ff41', '#00e5ff', '#ffaa00', '#ff0055'];
+                            let corSorteada = coresExplosao[Math.floor(Math.random() * coresExplosao.length)];
+                            
+                            criarExplosao(a.x, a.y, corSorteada);
+                            
+                            asteroides.splice(i, 1);
+                            tiros.splice(j, 1);
+                            pontos += 15;
+                            pontosEl.innerText = pontos;
+                            break;
+                        }
+                    }
+                }
+
+                if (asteroides.length === 0) {
+                    fase++;
+                    faseEl.innerText = fase;
+                    iniciarFase();
+                }
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (estrela) {
+                ctx.fillStyle = '#ffaa00';
+                ctx.shadowBlur = 12;
+                ctx.shadowColor = '#ffaa00';
+                ctx.beginPath();
+                ctx.arc(estrela.x, estrela.y, estrela.raio, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+
+            particulas.forEach(p => {
+                ctx.fillStyle = p.cor;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            ctx.save();
+            ctx.translate(nave.x, nave.y);
+            ctx.rotate(nave.angulo);
+            ctx.strokeStyle = '#00ff41';
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = '#00ff41';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(15, 0);
+            ctx.lineTo(-11, -10);
+            ctx.lineTo(-6, 0);
+            ctx.lineTo(-11, 10);
+            ctx.closePath();
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+            ctx.restore();
+
+            tiros.forEach(t => {
+                ctx.fillStyle = t.tipo === 'missil' ? '#ffaa00' : '#ffffff';
+                ctx.shadowBlur = 6;
+                ctx.shadowColor = t.tipo === 'missil' ? '#ffaa00' : '#ffffff';
+                ctx.beginPath();
+                ctx.arc(t.x, t.y, t.tipo === 'missil' ? 5 : 3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+            ctx.strokeStyle = '#00ff41';
+            ctx.lineWidth = 2;
+            asteroides.forEach(a => {
+                ctx.beginPath();
+                ctx.arc(a.x, a.y, a.raio, 0, Math.PI * 2);
+                ctx.stroke();
+            });
+
+            if (gameOver) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.fillStyle = '#ff0055';
+                ctx.font = 'bold 28px monospace';
+                ctx.textAlign = 'center';
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#ff0055';
+                ctx.fillText('FIM DE JOGO', canvas.width / 2, canvas.height / 2 - 20);
+                ctx.shadowBlur = 0;
+
+                ctx.fillStyle = '#fff';
+                ctx.font = '14px monospace';
+                ctx.fillText('Toque no botão TIRO para recomeçar', canvas.width / 2, canvas.height / 2 + 25);
+            }
+
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+    </script>
+</body>
+</html>
